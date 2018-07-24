@@ -7,6 +7,7 @@
 (require 'json)
 (require 'map)
 (require 'seq)
+(require 'subr-x)
 (require 'time-date)
 (require 'url)
 
@@ -32,8 +33,14 @@
   (youtube-video-date video))
 
 (defun youtube-video-views-string (video)
-  ;; TODO: Insert commas every 3 digits
-  (number-to-string (youtube-video-views video)))
+  (--> video
+    (youtube-video-views video)
+    (number-to-string it)
+    (nreverse it)
+    (seq-partition it 3)
+    (seq-map #'nreverse it)
+    (nreverse it)
+    (string-join it ",")))
 
 (defun youtube-video-duration-string (video)
   (let ((seconds (youtube-video-duration video)))
@@ -58,6 +65,7 @@
 (defun youtube-search (query callback)
   (url-retrieve
    ;; TODO: Escape query
+   ;; TODO: Use pbj=1 instead of spf=navigate, it used by the polymer (material design) interface
    (format "https://www.youtube.com/results?search_query=%s&spf=navigate" query)
    (lambda (status callback)
      (goto-char url-http-end-of-headers)
@@ -82,7 +90,7 @@
   ;;  (elquery-text)
   ;;  (youtube--scrape-integer))
   (->> content
-    (elquery-$ ".yt-lockup-video") (seq-reverse)
+    (elquery-$ ".yt-lockup-video") (nreverse)
     (seq-remove (lambda (video) (elquery-$ ".yt-badge-ad" video)))
     (seq-map #'youtube--scrape-search-video)))
 
@@ -96,7 +104,7 @@
          (views (-> meta (seq-elt 0)))
          (date (-> meta (seq-elt 1)))
          (description (->> video (elquery-$ ".yt-lockup-description") (car)))
-         (badges (->> video (elquery-$ ".yt-lockup-badges .yt-badge") (seq-reverse))))
+         (badges (->> video (elquery-$ ".yt-lockup-badges .yt-badge") (nreverse))))
     (youtube--video-create
      :id (-> video (elquery-data "context-item-id"))
      :title (-some-> title (elquery-text))
@@ -124,18 +132,17 @@
   (error "unimplemented"))
 
 (defun youtube--scrape-integer (integer)
-  (if (string-match "[0-9,]+" integer)
-      (let ((integer (match-string 0 integer))
-            (index 0))
-        (while (setq index (string-match "," integer index))
-          (setq integer (replace-match "" t t integer)))
-        (string-to-number integer))))
+  (save-match-data
+    (if (string-match "[0-9,]+" integer)
+        (->> (match-string 0 integer)
+          (replace-regexp-in-string "," "")
+          (string-to-number)))))
 
 (defun youtube--scrape-duration (duration)
   (seq-let (second minute hour)
       (--> duration
         (split-string it ":")
-        (seq-reverse it)
+        (nreverse it)
         (seq-map #'string-to-number it))
     (+ second
        (* minute 60)
