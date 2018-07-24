@@ -5,6 +5,9 @@
 (require 'url-http)
 (require 'youtube)
 
+(eval-when-compile
+  (require 'dash))
+
 (defmacro lazy-insert-image (image &optional string area slice)
   `(let ((string ,(or string " "))
          (area ,area)
@@ -24,34 +27,50 @@
                  (delete-char (length string))
                  (insert-image image string area slice)))))))))
 
-(youtube-search
- "rick astley"
- (lambda (videos)
-   (let ((search-results (generate-new-buffer "youtube search results")))
-     (with-current-buffer search-results
-       (seq-doseq (video videos)
-         (lazy-insert-image (youtube-video-thumbnail-image video))
-         (newline)
-         (youtube-video-duration-string video)
-         (insert (youtube-video-title video))
-         (newline)
-         (let ((author (youtube-video-author video)))
-           (insert-text-button (youtube-author-name author)
-                               'action (lambda (x) (browse-url (youtube-author-url author))))
-           (insert (if (youtube-author-verified author) " ✓" ""))
-           (newline))
-         (insert (youtube-video-views-string video) " views"
-                 " • "
-                 (youtube-video-date-string video))
-         (newline)
-         (insert (youtube-video-description video))
-         (newline)
-         (when-let ((badges (youtube-video-badges video)))
-           (insert (string-join badges " • "))
-           (newline))
-         (insert-text-button (youtube-video-url video)
-                             'action (lambda (x) (browse-url (youtube-video-url video))))
-         (newline)
-         (newline))
-       (beginning-of-buffer))
-     (view-buffer-other-window search-results))))
+(defun youtube-search-interactive (query)
+  (interactive "M")
+  (youtube-search
+   query
+   (lambda (videos)
+     (let ((search-results (get-buffer "youtube search results")))
+       (with-current-buffer search-results
+         (let ((inhibit-read-only t))
+           (seq-doseq (video videos)
+
+             (lazy-insert-image (youtube-video-thumbnail-image video))
+             (newline)
+
+             (let ((video (youtube-video-title video)))
+               (insert video)
+               (newline))
+
+             (let* ((author (youtube-video-author video))
+                    (name (youtube-author-name author))
+                    (url (youtube-author-url author))
+                    (verified (youtube-author-verified author)))
+               (insert-text-button name 'action (lambda (x) (browse-url url)))
+               (insert (if verified " ✓" ""))
+               (newline))
+
+             (when-let ((meta (list
+                               (-some-> (youtube-video-views-string video) (concat " views"))
+                               (youtube-video-date-string video))))
+               (insert (string-join (seq-filter #'identity meta) " • "))
+               (newline))
+
+             (when-let (description (-some-> (youtube-video-description video)))
+               (insert description)
+               (newline))
+
+             (when-let ((badges (youtube-video-badges video)))
+               (insert (string-join badges " • "))
+               (newline))
+
+             (let ((url (youtube-video-url video)))
+               (insert-text-button url 'action (lambda (x) (start-process (concat "mpv " url) nil "mpv" url)))
+               (newline))
+
+             (newline)))
+         (goto-char (point-min))
+         (read-only-mode))
+       (switch-to-buffer search-results)))))
