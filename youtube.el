@@ -69,9 +69,10 @@
    (format "https://www.youtube.com/results?search_query=%s&spf=navigate" query)
    (lambda (status callback)
      (goto-char url-http-end-of-headers)
-     (->> (json-read)
-       (youtube--scrape-search-body)
-       (funcall callback)))
+     (if-let ((results (-some-> (json-read) (youtube--scrape-search-body))))
+         (funcall callback results)
+       (switch-to-buffer-other-window (current-buffer))
+       (error "failed to scrape youtube search results")))
    (list callback))
   nil)
 
