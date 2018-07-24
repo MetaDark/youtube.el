@@ -33,8 +33,7 @@
   (youtube-video-date video))
 
 (defun youtube-video-views-string (video)
-  (--> video
-    (youtube-video-views it)
+  (-some--> (youtube-video-views video)
     (number-to-string it)
     (nreverse it)
     (seq-partition it 3)
@@ -43,13 +42,12 @@
     (string-join it ",")))
 
 (defun youtube-video-thumbnail-image (video callback)
-  (-> video
-    (youtube-video-thumbnail-url)
-    (youtube--download-image callback)))
+  (if-let ((url (youtube-video-thumbnail-url video)))
+      (youtube--download-image url callback)
+    (funcall callback nil)))
 
 (defun youtube-video-duration-string (video)
-  (--> video
-    (youtube-video-duration-seconds it)
+  (-some--> (youtube-video-duration-seconds video)
     (format-seconds (if (< it 3600) "%m:%.2s" "%h:%.2m:%.2s") it)))
 
 (cl-defstruct (youtube-author (:constructor youtube--author-create))
