@@ -9,7 +9,7 @@
 (require 'seq)
 (require 'subr-x)
 (require 'time-date)
-(require 'url)
+(require 'url-http)
 
 (eval-when-compile
   (require 'cl-macs)
@@ -22,8 +22,8 @@
   (date nil :read-only t)
   (views nil :read-only t)
   (description nil :read-only t)
-  (thumbnail nil :read-only t)
-  (duration nil :read-only t)
+  (thumbnail-url nil :read-only t)
+  (duration-seconds nil :read-only t)
   (badges nil :read-only t))
 
 (defun youtube-video-url (video)
@@ -34,7 +34,7 @@
 
 (defun youtube-video-views-string (video)
   (--> video
-    (youtube-video-views video)
+    (youtube-video-views it)
     (number-to-string it)
     (nreverse it)
     (seq-partition it 3)
@@ -42,11 +42,15 @@
     (nreverse it)
     (string-join it ",")))
 
+(defun youtube-video-thumbnail-image (video callback)
+  (-> video
+    (youtube-video-thumbnail-url)
+    (youtube--download-image callback)))
+
 (defun youtube-video-duration-string (video)
-  (let ((seconds (youtube-video-duration video)))
-    (format-seconds
-     (if (< seconds 3600) "%m:%.2s" "%h:%.2m:%.2s")
-     seconds)))
+  (--> video
+    (youtube-video-duration-seconds it)
+    (format-seconds (if (< it 3600) "%m:%.2s" "%h:%.2m:%.2s") it)))
 
 (cl-defstruct (youtube-author (:constructor youtube--author-create))
   (url nil :read-only t)
@@ -114,12 +118,12 @@
      ;; NOTE: views could overflow on 32-bit machines (eg. Gangnam Style)
      :views (-some-> views (elquery-text) (youtube--scrape-integer))
      :description (-some-> description (elquery-text))
-     :thumbnail
+     :thumbnail-url
      (-some->
          (or (-some-> thumbnail-img (elquery-data "thumb"))
              (-some-> thumbnail-img (elquery-prop "src")))
        (url-expand-file-name))
-     :duration (-some-> duration (elquery-text) (youtube--scrape-duration))
+     :duration-seconds (-some-> duration (elquery-text) (youtube--scrape-duration-seconds))
      :badges (->> badges (seq-map #'elquery-text)))))
 
 (defun youtube--scrape-search-author (author)
@@ -139,7 +143,7 @@
           (replace-regexp-in-string "," "")
           (string-to-number)))))
 
-(defun youtube--scrape-duration (duration)
+(defun youtube--scrape-duration-seconds (duration)
   (seq-let (second minute hour)
       (--> duration
         (split-string it ":")
@@ -152,5 +156,18 @@
 (defun youtube--scrape-relative-date (date)
   ;; TODO: Parse into a date object
   date)
+
+(defun youtube--download-image (image callback)
+  (url-retrieve
+   image
+   (lambda (status callback)
+     (--> (buffer-substring-no-properties
+           (+ 1 url-http-end-of-headers) (point-max))
+       ;; TODO: Parse type from HTTP response
+       ;; (or (content-type)
+       ;;     (image-type-from-file-name))
+       (create-image it nil t)
+       (funcall callback it)))
+   (list callback)))
 
 (provide 'youtube)
