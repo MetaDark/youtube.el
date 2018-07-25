@@ -28,13 +28,14 @@
                  (insert-image image string area slice)))))))))
 
 (defun youtube-search-interactive (query)
-  (interactive "M")
+  (interactive "MSearch Query: ")
   (youtube-search
    query
    (lambda (videos)
-     (let ((search-results (get-buffer "youtube search results")))
+     (let ((search-results (get-buffer-create "youtube search results")))
        (with-current-buffer search-results
          (let ((inhibit-read-only t))
+           (erase-buffer)
            (seq-doseq (video videos)
 
              (lazy-insert-image (youtube-video-thumbnail-image video))
